@@ -2,11 +2,6 @@ provider "aws" {
 }
 
 terraform {
-  required_providers {
-    aws = {
-      version = "~> 3"
-    }
-  }
   backend "s3" {
     bucket = "tf-bucket-17"
     key    = "terraform.tfstate"
