@@ -1,6 +1,14 @@
 provider "aws" {
 }
 
+terraform {
+  backend "s3" {
+    bucket = "tf-bucket-17"
+    key    = "terraform.tfstate"
+    region = "us-east-1"
+  }
+}
+
 module "network" {
   source = "./modules/network"
 }
@@ -22,5 +30,14 @@ resource "null_resource" "configure_kubeconfig" {
     rm ./kubeconfigs/*.conf
     EOF
   }
-  depends_on = [ module.cluster ]
+  depends_on = [module.cluster]
 }
+
+resource "aws_s3_object" "object" {
+  bucket = var.bucket_name
+  key    = "kubeconfig.yaml"
+  source = "./kubeconfigs/kubeconfig.yaml"
+
+  depends_on = [null_resource.configure_kubeconfig]
+}
+
