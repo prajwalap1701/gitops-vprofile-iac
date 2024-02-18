@@ -1,0 +1,93 @@
+#!/bin/bash
+
+# Load necessary kernel modules for containerd
+cat << EOF | sudo tee /etc/modules-load.d/containerd.conf
+overlay
+br_netfilter
+EOF
+
+sudo modprobe overlay
+sudo modprobe br_netfilter
+
+# Configure kernel networking requirements for Kubernetes
+cat << EOF | sudo tee /etc/sysctl.d/99-kubernetes.conf
+net.bridge.bridge-nf-call-iptables = 1
+net.ipv4.ip_forward = 1
+net.bridge.bridge-nf-call-iptables = 1
+EOF
+
+sudo sysctl --system
+
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" >/etc/apt/sources.list.d/docker.list
+apt-get update
+apt-get install -y containerd.io
+
+# Configure containerd to use the systemd cgroup driver
+# https://kubernetes.io/docs/setup/production-environment/container-runtimes/#containerd-systemd
+mkdir -p /etc/containerd
+containerd config default >/etc/containerd/config.toml
+sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+systemctl restart containerd
+
+# Disable swap to meet Kubernetes requirements
+sudo swapoff -a
+sudo apt-get update && sudo apt-get install -y apt-transport-https ca-certificates curl gpg
+
+
+# Add Kubernetes apt repository and GPG key
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+
+# Update package information and install specific Kubernetes components
+sudo apt-get update
+sudo apt-get install -y kubelet kubeadm kubectl
+
+# Prevent automatic updates for Kubernetes components
+sudo apt-mark hold kubelet kubeadm kubectl
+
+
+%{ if node == "master" ~}
+#------------------------------------------------------------------------------#
+# Master: initialise cluster
+#------------------------------------------------------------------------------#
+kubeadm init \
+  --token "${token}" \
+  --token-ttl 15m \
+  --apiserver-cert-extra-sans "${master_public_ip}" \
+  %{~ if cidr != null ~}
+  --pod-network-cidr "${cidr}" \
+  %{~ endif ~}
+  --node-name ${cluster_name}-controlplane
+
+# Prepare kubeconfig file for downloading
+
+mkdir -p /home/ubuntu/.kube
+sudo cp /etc/kubernetes/admin.conf /home/ubuntu/.kube/config
+sudo cp /etc/kubernetes/admin.conf /home/ubuntu
+
+sudo chown ubuntu:ubuntu /home/ubuntu/admin.conf
+sudo chown ubuntu:ubuntu /home/ubuntu/.kube/config
+
+sleep 5
+kubectl --kubeconfig /home/ubuntu/admin.conf config set-cluster kubernetes --server "https://${master_public_ip}:6443"
+
+# Install weave network plugin for pod networking
+kubectl --kubeconfig /home/ubuntu/admin.conf apply -f https://github.com/weaveworks/weave/releases/download/v2.8.1/weave-daemonset-k8s.yaml 
+
+# Deploy Ingress controller
+kubectl --kubeconfig /home/ubuntu/admin.conf apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.8.2/deploy/static/provider/cloud/deploy.yaml
+%{~ endif ~}
+
+%{~ if node == "worker" ~}
+#------------------------------------------------------------------------------#
+# Worker: join cluster
+#------------------------------------------------------------------------------#
+kubeadm join "${master_private_ip}:6443" \
+  --token "${token}" \
+  --discovery-token-unsafe-skip-ca-verification \
+  --node-name ${cluster_name}-worker-${worker_index}
+%{~ endif }
+
+# Indicate completion
+touch /home/ubuntu/done

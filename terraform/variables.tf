@@ -1,11 +1,13 @@
-variable "region" {
-  description = "AWS region"
-  type        = string
-  default     = "us-east-1"
+variable "cluster_names" {
+  type        = list(string)
+  description = "Names for the individual clusters."
+  default     = ["dev"]
 }
 
-variable "clusterName" {
-  description = "Name of the EKS cluster"
+variable "bucket_name" {
   type        = string
-  default     = "gitops-eks"
+  description = "Names of the s3 bucket to upload kubeconfig.yaml"
+  default     = "tf-bucket-17"
 }
+
+#
