@@ -74,6 +74,9 @@ kubectl --kubeconfig /home/ubuntu/admin.conf config set-cluster kubernetes --ser
 
 # Install weave network plugin for pod networking
 kubectl --kubeconfig /home/ubuntu/admin.conf apply -f https://github.com/weaveworks/weave/releases/download/v2.8.1/weave-daemonset-k8s.yaml 
+
+# Deploy Ingress controller
+kubectl --kubeconfig /home/ubuntu/admin.conf apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.8.2/deploy/static/provider/cloud/deploy.yaml
 %{~ endif ~}
 
 %{~ if node == "worker" ~}
