@@ -17,3 +17,5 @@ Terraform version 1.6.6
 * terraform apply -auto-approve -input=false -parallelism=1 planfile
 ####
 #####
+
+## Vprofile Application code: https://github.com/prajwalap1701/gitops-vprofile-app
